@@ -13,6 +13,8 @@ import java.util.EnumSet;
 
 import org.checkerframework.checker.dividebyzero.qual.*;
 
+import org.checkerframework.framework.type.AnnotatedTypeMirror;
+
 public class DivByZeroVisitor extends BaseTypeVisitor<DivByZeroAnnotatedTypeFactory> {
 
     /** Set of operators we care about */
@@ -31,6 +33,27 @@ public class DivByZeroVisitor extends BaseTypeVisitor<DivByZeroAnnotatedTypeFact
     private boolean errorAt(BinaryTree node) {
         // A BinaryTree represents a binary operator, like + or -.
         // TODO
+        ExpressionTree leftOp = node.getLeftOperand();
+        ExpressionTree rightOp = node.getRightOperand();
+
+        AnnotatedTypeMirror left = atypeFactory.getAnnotatedType(leftOp);
+        AnnotatedTypeMirror right = atypeFactory.getAnnotatedType(rightOp);
+        
+        /* Debugging code.
+        if (node.getKind() == Tree.Kind.DIVIDE) {
+            System.out.println("start");
+            System.out.println(leftOp);
+            System.out.println(rightOp);
+            System.out.println(node);
+            System.out.println(right);
+            System.out.println("stop");
+        }*/
+
+        if ((node.getKind() == Tree.Kind.DIVIDE || node.getKind() == Tree.Kind.REMAINDER) && (right.hasEffectiveAnnotation(Zero.class) || right.hasEffectiveAnnotation(Top.class))) {
+
+            return true;
+        }
+
         return false;
     }
 
@@ -44,6 +67,14 @@ public class DivByZeroVisitor extends BaseTypeVisitor<DivByZeroAnnotatedTypeFact
         // A CompoundAssignmentTree represents a binary operator plus assignment,
         // like "x += 10".
         // TODO
+        ExpressionTree exp = node.getExpression();
+
+        AnnotatedTypeMirror atm = atypeFactory.getAnnotatedType(exp);
+
+        if ((node.getKind() == Tree.Kind.DIVIDE_ASSIGNMENT || node.getKind() == Tree.Kind.REMAINDER_ASSIGNMENT) && (atm.hasEffectiveAnnotation(Zero.class) || atm.hasEffectiveAnnotation(Top.class))) {
+            return true;
+        }
+
         return false;
     }
 

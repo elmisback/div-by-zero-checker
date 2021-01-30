@@ -21,6 +21,8 @@ import java.util.Set;
 
 import org.checkerframework.checker.dividebyzero.qual.*;
 
+import java.util.stream.IntStream;
+
 public class DivByZeroTransfer extends CFTransfer {
 
     enum Comparison {
@@ -71,8 +73,48 @@ public class DivByZeroTransfer extends CFTransfer {
             Comparison operator,
             AnnotationMirror lhs,
             AnnotationMirror rhs) {
-        // TODO
-        return lhs;
+        Class<? extends Annotation> cls;
+        AnnotationMirror TOP = reflect(Top.class);
+        AnnotationMirror ZERO = reflect(Zero.class);
+        AnnotationMirror NONZERO = reflect(NonZero.class);
+        AnnotationMirror NEGATIVE = reflect(Negative.class);
+        AnnotationMirror POSITIVE = reflect(Positive.class);
+        switch (operator) {
+        case EQ:
+            //System.out.println(glb(lhs, rhs));
+            //System.exit(1);
+            return glb(lhs, rhs);
+        case NE:
+            return equal(rhs, ZERO) ? glb(lhs, NONZERO)
+                :  lhs;
+        case LT:
+            return 
+                (equal(rhs, ZERO) || equal(rhs, NEGATIVE)) ? 
+                    glb(lhs, NEGATIVE)
+                : lhs;
+        case LE:
+        /* Debugging code.
+            System.out.println("start");
+            System.out.println(lhs);
+            System.out.println(rhs);
+            System.out.println(lub(
+                refineLhsOfComparison(Comparison.LT, lhs, rhs), refineLhsOfComparison(Comparison.EQ, lhs, rhs)));
+            System.out.println("stop");
+          */
+            return lub(
+                refineLhsOfComparison(Comparison.LT, lhs, rhs), refineLhsOfComparison(Comparison.EQ, lhs, rhs));
+        case GT:
+            return 
+                (equal(rhs, ZERO) || equal(rhs, POSITIVE)) ? 
+                    glb(lhs, POSITIVE)
+                : lhs;
+        case GE:
+            return lub(
+                refineLhsOfComparison(Comparison.GT, lhs, rhs), refineLhsOfComparison(Comparison.EQ, lhs, rhs));
+        }
+        
+        System.out.println("If you're seeing this statement, something went wrong.");
+        return null;
     }
 
     /**
@@ -93,7 +135,89 @@ public class DivByZeroTransfer extends CFTransfer {
             BinaryOperator operator,
             AnnotationMirror lhs,
             AnnotationMirror rhs) {
-        // TODO
+        
+        AnnotationMirror T = top();
+        AnnotationMirror B = bottom();
+        AnnotationMirror O = reflect(Zero.class);
+        AnnotationMirror n = reflect(NonZero.class);
+        AnnotationMirror N = reflect(Negative.class);
+        AnnotationMirror P = reflect(Positive.class);
+        
+        // This isn't strictly true but hopefully it works well enough...
+        // TODO test
+        AnnotationMirror E = top();
+
+        AnnotationMirror [][] plusTable = {
+            // A + B  T  B  O  n  N  P
+            /* T */  {T, B, T, T, T, T},
+            /* B */  {B, B, B, B, B, B},
+            /* O */  {T, B, O, n, N, P},
+            /* n */  {T, B, n, T, T, T},
+            /* N */  {T, B, N, T, N, T},
+            /* P */  {T, B, P, T, T, P}
+            };
+        AnnotationMirror [][] timesTable = {
+            // A * B  T  B  O  n  N  P
+            /* T */  {T, B, T, T, T, T},
+            /* B */  {B, B, B, B, B, B},
+            /* O */  {T, B, O, O, O, O},
+            /* n */  {T, B, O, n, n, n},
+            /* N */  {T, B, O, n, P, N},
+            /* P */  {T, B, O, n, N, P}
+            };
+        AnnotationMirror [][] minusTable = {
+            // A - B  T  B  O  n  N  P
+            /* T */  {T, B, T, T, T, T},
+            /* B */  {B, B, B, B, B, B},
+            /* O */  {T, B, O, n, P, N},
+            /* n */  {T, B, n, T, T, T},
+            /* N */  {T, B, N, T, T, N},
+            /* P */  {T, B, P, T, P, T}
+            };
+        
+        // Integer division, watch out.
+        // I'm assuming error cases aren't actually handled here...
+        // TODO test
+        AnnotationMirror [][] divideTable = {
+            // A / B  T  B  O  n  N  P
+            /* T */  {E, B, T, T, T, T},
+            /* B */  {B, B, B, B, B, B},
+            /* O */  {E, B, E, O, O, O},
+            /* n */  {E, B, E, T, T, T},
+            /* N */  {E, B, E, T, T, T},
+            /* P */  {E, B, E, T, T, T}
+            };
+        AnnotationMirror [][] modTable = {
+            // A + B  T  B  O  n  N  P
+            /* T */  {E, B, T, T, T, T},
+            /* B */  {B, B, B, B, B, B},
+            /* O */  {E, B, E, O, O, O},
+            /* n */  {E, B, E, T, T, T},
+            /* N */  {E, B, E, T, T, T},
+            /* P */  {E, B, E, T, T, T}
+            };
+        AnnotationMirror[] order = {T, B, O, n, N, P};
+
+        // borrowed from https://stackoverflow.com/questions/44077274/how-to-get-index-of-findfirst-in-java-8
+        int lhs_i = IntStream.range(0, order.length)
+                     .filter(i -> equal(lhs, order[i]))
+                     .findFirst().orElse(-1);
+        int rhs_i = IntStream.range(0, order.length)
+                    .filter(i -> equal(rhs, order[i]))
+                    .findFirst().orElse(-1);
+        switch (operator) {
+        case PLUS:
+            return plusTable[lhs_i][rhs_i];
+        case MINUS:
+            return minusTable[lhs_i][rhs_i];
+        case TIMES:
+            return timesTable[lhs_i][rhs_i];
+        case DIVIDE:
+            return divideTable[lhs_i][rhs_i];
+        case MOD:
+            return modTable[lhs_i][rhs_i];
+        }
+        System.out.println("Should never get here.");
         return top();
     }
 
